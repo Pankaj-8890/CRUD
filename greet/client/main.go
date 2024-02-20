@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
-	// "fmt"
+	"fmt"
 	pb "go-grpc/greet/proto"
 	"log"
 	"strconv"
@@ -20,6 +20,20 @@ type UserDetails struct {
 	Second_name string `json: "second_name"`
 	Age        int64	`json: "age"`
 }
+
+type CreateResponse struct {
+	Token   string `json:"token"`
+	Message string  `json:"message"`
+}
+
+type GetResponse struct{
+	Message string `json:"message"`
+}
+
+type UpdateResponse struct{
+	Message string `json:"message"`
+}
+
 
 var addr string = "localhost:50051"
 
@@ -43,8 +57,8 @@ func main(){
 	router.HandleFunc("/user/{id}",func(w http.ResponseWriter, r *http.Request){
 		GetUser(c, w, r)}).Methods("GET")	
 
-	// router.HandleFunc("/user",func(w http.ResponseWriter, r *http.Request){
-	// 	UpdateUser(c, w, r)}).Methods("PUT")
+	router.HandleFunc("/user/{id}",func(w http.ResponseWriter, r *http.Request){
+		UpdateUser(c, w, r)}).Methods("PUT")
 
 
 	http.ListenAndServe(":8088",router)	
@@ -67,7 +81,11 @@ func GetUser(client pb.GreetClient, w http.ResponseWriter, r *http.Request){
 	})
 
 	if err!=nil{
-		log.Fatalf("error while getting user %v",err)
+		response := GetResponse{
+			Message: err.Error(),
+		}
+		json.NewEncoder(w).Encode(response)
+		return
 	}
 
 	usr := UserDetails{
@@ -89,7 +107,7 @@ func Create(client pb.GreetClient, w http.ResponseWriter, r *http.Request){
 
 	json.NewDecoder(r.Body).Decode(&usr)
 
-	// fmt.Print(usr)
+	fmt.Print(usr)
 
 	user := &pb.User{
 		Id : usr.Id,
@@ -102,15 +120,61 @@ func Create(client pb.GreetClient, w http.ResponseWriter, r *http.Request){
 	})
 	
 	if err!=nil{
-		log.Fatalf("error while creating user %v",err)
+		response := CreateResponse{
+			Token:   "",
+			Message: err.Error(),
+		}
+		json.NewEncoder(w).Encode(response)
+		return
 	}
 
-	json.NewEncoder(w).Encode(struct {
-		Token   string `json:"token"`
-		Message string `json:"message"`
-	}{
+	response := CreateResponse{
 		Token:   res.Token,
 		Message: res.Message,
-	})
+	}
+	json.NewEncoder(w).Encode(response)
 
 }
+
+func UpdateUser(client pb.GreetClient, w http.ResponseWriter, r *http.Request){
+
+	
+	param := mux.Vars(r)
+
+	userId, err := strconv.Atoi(param["id"])
+
+	if err != nil {
+		panic(err)
+	}
+
+	var usr UserDetails
+
+	json.NewDecoder(r.Body).Decode(&usr)
+
+	user := &pb.User{
+		Id : usr.Id,
+		FirstName: usr.First_name,
+		SecondName: usr.Second_name,
+		Age: usr.Age,
+	}
+	res,err := client.UpdateUser(context.Background(),&pb.UpdateUserRequest{
+		User: user,
+		Id: int64(userId),
+	})
+	
+	if err!=nil{
+		response := UpdateResponse{
+			Message: err.Error(),
+		}
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	response := UpdateResponse{
+		Message: res.Message,
+	}
+	json.NewEncoder(w).Encode(response)
+
+}
+
+

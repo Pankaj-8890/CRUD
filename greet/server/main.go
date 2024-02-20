@@ -36,7 +36,6 @@ type User struct {
 }
 
 
-
  func DatabaseConnection() *gorm.DB {
     host := "localhost"
     port := "5432"
@@ -89,7 +88,9 @@ func (s *Server)CreatUser(ctx context.Context, req *pb.CreateUserRequest) (*pb.C
 
 	usr := req.User
 	token := uuid.New().String()
-
+	// fmt.Println("----------------------------")
+	// fmt.Println(usr)
+	// fmt.Println("----------------------------")
 	
 	users := User{
 		Id: usr.Id,
@@ -97,6 +98,9 @@ func (s *Server)CreatUser(ctx context.Context, req *pb.CreateUserRequest) (*pb.C
 		Second_name: usr.SecondName,
 		Age: usr.Age,
 	}
+
+	// fmt.Println(users)
+	// fmt.Println("----------------------------")
 
 	users.Token = token 
 
@@ -132,9 +136,31 @@ func (s *Server)GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.GetUse
 
 }
 
-// func (s *Server)UpdateUser(ctx context.Context, req *pb.UpdateUserRequest) (*pb.UpdateUserResponse, error){
+func (s *Server)UpdateUser(ctx context.Context, req *pb.UpdateUserRequest) (*pb.UpdateUserResponse, error){
 
-// }
+	usr := req.User
+	id := req.Id
+
+	var user *pb.User
+	s.DB.First(&user,id)
+
+	if user.Id == 0 {
+		return nil, errors.New("user not found")
+	}
+
+	user.FirstName = usr.FirstName
+	user.SecondName = usr.SecondName
+	user.Age = usr.Age
+
+	s.DB.Save(&user)
+
+	response := &pb.UpdateUserResponse{
+		Message: "User successfully updated",
+	}
+
+	return response,nil
+
+}
 
 // mockgen -destination=mocks/mock_server.go -package=mocks go-grpc/greet/server/main.go
 // mockgen -source=greet/server/main.go -destination=mocks/mock_server.go -package=mocks github.com/jinzhu/gorm DB
