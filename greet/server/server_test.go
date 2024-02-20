@@ -1,72 +1,100 @@
 package main
 
 import (
-	"context"
-	pb "go-grpc/greet/proto"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/test/bufconn"
-	"log"
-	"net"
-	"testing"
+    "context"
+    // "errors"
+    "testing"
+
+    pb "go-grpc/greet/proto"
+	"gorm.io/gorm"
+    "github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/mock"
+	// "gopkg.in/DATA-DOG/go-sqlmock.v1"
+	"github.com/golang/mock/gomock"
+	
 )
 
-var lis *bufconn.Listener
 
-func serverMock() {
+func TestCreatUser(t *testing.T) {
 
-	lis = bufconn.Listen(1024 * 1024)
 
-	srv := grpc.NewServer()
+	ctrl := gomock.NewController(t)
+    defer ctrl.Finish()
 
-	svc := Server{}
-	pb.RegisterGreetServer(srv, &svc)
+    mockDB := mocks.NewMockDB(ctrl)
 
-	go func() {
-		if err := srv.Serve(lis); err != nil {
-			log.Fatalf("failed to server %v\n", err)
-		}
-	}()
+    mockDB.EXPECT().Open(gomock.Any(), gomock.Any()).Return(nil)
 
-}
-func TestSayHello(t *testing.T) {
+    // Create a test user request
+    testUserRequest := &pb.CreateUserRequest{
+        User: &pb.User{
+            Id:         1,
+            FirstName:  "John",
+            SecondName: "Doe",
+            Age:        30,
+        },
+    }
 
-	serverMock()
+    // Create a test context
+    ctx := context.Background()
 
-	dialer := func(context.Context, string) (net.Conn, error) {
-		return lis.Dial()
-	}
-	conn, err := grpc.DialContext(context.Background(), "", grpc.WithContextDialer(dialer), grpc.WithTransportCredentials(insecure.NewCredentials()))
-	t.Cleanup(func() {
-		conn.Close()
-	})
+    // Mock the behavior of DB.Create method
+    mockDB.On("Create", mock.AnythingOfType("*main.User")).Return(&gorm.DB{
+        RowsAffected: 1,
+    })
 
-	if err != nil {
-		t.Fatalf("grpc.DialContext %v", err)
-	}
+    // Initialize the server with the mocked DB
+    server := &Server{
+        DB: &mockDB{},
+    }
 
-	tests := []struct {
-		name string
-		want string
-	}{
-		{
-			name: "world",
-			want: "Helloworld",
-		},
-		
-	}
+    // Call the function to be tested
+    response, err := server.CreatUser(ctx, testUserRequest)
 
-	for _, tt := range tests {
-		client := pb.NewGreetClient(conn)
-		res, err := client.Greet(context.Background(), &pb.Request{FirstName: tt.name})
-		if err != nil {
-			// log.Fatalf("error 1 %v",err)
-			t.Errorf("HelloTest(%v) got unexpected error",err)
-		}
-		if res.Result != tt.want {
-			// log.Fatalf("error 2 %v",err)
-			t.Errorf("HelloText(%v)=%v, wanted %v", tt.name, res.Result, tt.want)
-		}
-	}
+    // Assert the response and error
+    assert.NoError(t, err)
+    assert.NotNil(t, response)
+    assert.Equal(t, "User successfully created", response.Message)
+    assert.NotEmpty(t, response.Token)
+
+    // Verify that the mock was called with the expected argument
+    mockDB.AssertCalled(t, "Create", mock.AnythingOfType("*main.User"))
 }
 
+func TestCreatUser_Unsuccessful(t *testing.T) {
+    // Initialize MockDB
+    mockDB := new(MockDB)
+
+    // Create a test user request
+    testUserRequest := &pb.CreateUserRequest{
+        User: &pb.User{
+            Id:         1,
+            FirstName:  "John",
+            SecondName: "Doe",
+            Age:        30,
+        },
+    }
+
+    // Create a test context
+    ctx := context.Background()
+
+    // Mock the behavior of DB.Create method
+    mockDB.On("Create", mock.AnythingOfType("*main.User")).Return(&gorm.DB{
+        RowsAffected: 0,
+    })
+
+    // Initialize the server with the mocked DB
+    server := &Server{
+        DB: &mockDB{},
+    }
+
+    // Call the function to be tested
+    response, err := server.CreatUser(ctx, testUserRequest)
+
+    // Assert the error
+    assert.Error(t, err)
+    assert.Nil(t, response)
+
+    // Verify that the mock was called with the expected argument
+    mockDB.AssertCalled(t, "Create", mock.AnythingOfType("*main.User"))
+}

@@ -6,7 +6,7 @@ import (
 	// "fmt"
 	pb "go-grpc/greet/proto"
 	"log"
-
+	"strconv"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -40,8 +40,8 @@ func main(){
 	router.HandleFunc("/user",func(w http.ResponseWriter, r *http.Request){
 		Create(c, w, r)}).Methods("POST")
 
-	// router.HandleFunc("/user/{id}",func(w http.ResponseWriter, r *http.Request){
-	// 	GetUser(c, w, r)}).Methods("GET")	
+	router.HandleFunc("/user/{id}",func(w http.ResponseWriter, r *http.Request){
+		GetUser(c, w, r)}).Methods("GET")	
 
 	// router.HandleFunc("/user",func(w http.ResponseWriter, r *http.Request){
 	// 	UpdateUser(c, w, r)}).Methods("PUT")
@@ -52,6 +52,34 @@ func main(){
 }
 
 
+func GetUser(client pb.GreetClient, w http.ResponseWriter, r *http.Request){
+
+	param := mux.Vars(r)
+
+	userId, err := strconv.Atoi(param["id"])
+
+	if err != nil {
+		panic(err)
+	}
+
+	res,err := client.GetUser(context.Background(),&pb.GetUserRequest{
+		Id: int64(userId),
+	})
+
+	if err!=nil{
+		log.Fatalf("error while getting user %v",err)
+	}
+
+	usr := UserDetails{
+		Id: res.User.Id,
+		First_name: res.User.FirstName,
+		Second_name: res.User.SecondName,
+		Age: res.User.Age,
+	}
+
+	json.NewEncoder(w).Encode(usr)
+
+}
 
 
 func Create(client pb.GreetClient, w http.ResponseWriter, r *http.Request){
@@ -86,4 +114,3 @@ func Create(client pb.GreetClient, w http.ResponseWriter, r *http.Request){
 	})
 
 }
-
