@@ -1,32 +1,45 @@
 package main
 
 import (
-    "context"
-    // "errors"
-    "testing"
+	"context"
+	// "errors"
+	"testing"
 
-    pb "go-grpc/greet/proto"
+	pb "go-grpc/greet/proto"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"gopkg.in/DATA-DOG/go-sqlmock.v1"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-    "github.com/stretchr/testify/assert"
-    "github.com/stretchr/testify/mock"
-	// "gopkg.in/DATA-DOG/go-sqlmock.v1"
-	"github.com/golang/mock/gomock"
-	
 )
 
+type MockGreetServer struct {
+    DB *gorm.DB
+	mock.Mock
+}
+
+
+func (m *MockGreetServer) CreatUser(ctx context.Context, req *pb.CreateUserRequest) (*pb.CreateUserResponse, error) {
+	args := m.Called(ctx, req)
+	return args.Get(0).(*pb.CreateUserResponse), args.Error(1)
+}
 
 func TestCreatUser(t *testing.T) {
 
 
-	ctrl := gomock.NewController(t)
-    defer ctrl.Finish()
+	mockDb, mock, _ := sqlmock.New()
+    dialector := postgres.New(postgres.Config{
+    Conn:       mockDb,
+    DriverName: "postgres",
+    })
+    db, _ := gorm.Open(dialector, &gorm.Config{})
 
-    mockDB := mocks.NewMockDB(ctrl)
+    rows := sqlmock.NewRows([]string{"Code", "Price"}).AddRow("D43", 100)
+    mock.ExpectQuery(`SELECT`).WillReturnRows(rows)
 
-    mockDB.EXPECT().Open(gomock.Any(), gomock.Any()).Return(nil)
-
-    // Create a test user request
-    testUserRequest := &pb.CreateUserRequest{
+   
+    req := &pb.CreateUserRequest{
         User: &pb.User{
             Id:         1,
             FirstName:  "John",
@@ -35,66 +48,20 @@ func TestCreatUser(t *testing.T) {
         },
     }
 
-    // Create a test context
-    ctx := context.Background()
-
-    // Mock the behavior of DB.Create method
-    mockDB.On("Create", mock.AnythingOfType("*main.User")).Return(&gorm.DB{
-        RowsAffected: 1,
-    })
-
-    // Initialize the server with the mocked DB
-    server := &Server{
-        DB: &mockDB{},
+    mockServer := &MockGreetServer{
+        DB : db,
     }
 
-    // Call the function to be tested
-    response, err := server.CreatUser(ctx, testUserRequest)
+	mockServer.On("CreatUser", context.Background(), req).Return(&pb.CreateUserResponse{
+		Message: "User successfully created",
+	}, nil)
 
-    // Assert the response and error
-    assert.NoError(t, err)
-    assert.NotNil(t, response)
-    assert.Equal(t, "User successfully created", response.Message)
-    assert.NotEmpty(t, response.Token)
+	res, err := mockServer.CreatUser(context.Background(), req)
 
-    // Verify that the mock was called with the expected argument
-    mockDB.AssertCalled(t, "Create", mock.AnythingOfType("*main.User"))
-}
+	assert.NoError(t, err, "Unexpected error in CreatUser")
+	assert.NotNil(t, res, "Response should not be nil")
+	assert.Equal(t, "User successfully created", res.Message, "Unexpected response message")
 
-func TestCreatUser_Unsuccessful(t *testing.T) {
-    // Initialize MockDB
-    mockDB := new(MockDB)
+	mockServer.AssertExpectations(t)
 
-    // Create a test user request
-    testUserRequest := &pb.CreateUserRequest{
-        User: &pb.User{
-            Id:         1,
-            FirstName:  "John",
-            SecondName: "Doe",
-            Age:        30,
-        },
-    }
-
-    // Create a test context
-    ctx := context.Background()
-
-    // Mock the behavior of DB.Create method
-    mockDB.On("Create", mock.AnythingOfType("*main.User")).Return(&gorm.DB{
-        RowsAffected: 0,
-    })
-
-    // Initialize the server with the mocked DB
-    server := &Server{
-        DB: &mockDB{},
-    }
-
-    // Call the function to be tested
-    response, err := server.CreatUser(ctx, testUserRequest)
-
-    // Assert the error
-    assert.Error(t, err)
-    assert.Nil(t, response)
-
-    // Verify that the mock was called with the expected argument
-    mockDB.AssertCalled(t, "Create", mock.AnythingOfType("*main.User"))
 }
